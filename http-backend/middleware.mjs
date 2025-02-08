@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken'
 const JWT_SECRET = "grins";
 export function middleware (req,res,next){
-    console.log(req.headers);
     if(!req.headers.token){
         res.send({
             msg:"Token not present"
