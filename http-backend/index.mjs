@@ -190,10 +190,12 @@ app.post("/expenses", middleware, async (req, res) => {
 
 app.post("/transactions", middleware, async (req, res) => {
     const transactions = req.body.transactions.map(transaction => ({
-        ...transaction,
+        description: transaction.description,
+        amount: parseFloat(transaction.amount), // Change amount to float
+        date: new Date(transaction.date).toISOString(), // Ensure date is in ISO-8601 format
+        type: transaction.type,
         adminId: req.id
     }));
-
     try {
         const dbResTransactions = await prisma.transaction.createMany({
             data: transactions

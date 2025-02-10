@@ -37,6 +37,107 @@ function StatCard({ title, amount, icon: Icon, trend }) {
     </div>
   );
 }
+function TransactionModal({ transactions, onClose, onAddTransaction }) {
+  const [newTransaction, setNewTransaction] = useState({
+    description: '',
+    amount: 0,
+    date: '',
+    type: 'income'
+  });
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewTransaction({ ...newTransaction, [name]: value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.post(`http://localhost:3001/transactions`, { transactions: [newTransaction] }, {
+        headers: {
+          token: token
+        }
+      });
+    } catch (error) {
+      console.error("Error adding transaction:", error);
+    }
+    location.reload();
+  };
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-white p-6 rounded-lg shadow-lg max-w-3xl w-full">
+        <h2 className="text-xl font-bold mb-4">All Transactions</h2>
+        <div className="space-y-4 max-h-96 overflow-y-auto">
+          {transactions.map((transaction) => (
+            <TransactionItem key={transaction.id} {...transaction} />
+          ))}
+        </div>
+        <form onSubmit={handleSubmit} className="mt-4">
+          <h3 className="text-lg font-bold mb-2">Add New Transaction</h3>
+          <div className="mb-4">
+            <label className="block text-gray-700">Description</label>
+            <input
+              type="text"
+              name="description"
+              value={newTransaction.description}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-gray-700">Amount</label>
+            <input
+              type="number"
+              name="amount"
+              value={newTransaction.amount}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-gray-700">Date</label>
+            <input
+              type="date"
+              name="date"
+              value={newTransaction.date}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-gray-700">Type</label>
+            <select
+              name="type"
+              value={newTransaction.type}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            >
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+            </select>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="px-4 py-2 bg-gray-300 rounded-lg mr-2"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+            >
+              Add
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function BudgetProgress({ budget, onUpdate }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,7 +147,6 @@ function BudgetProgress({ budget, onUpdate }) {
     spent: budget.spent,
     color: budget.color
   });
-  console.log(budget);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -194,12 +294,21 @@ function MainHeader({ financialData, onUpdate }) {
           token: token
         }
       });
-      onUpdate(res.data.data);
+      onUpdate((data)=>{
+        data.balance = formData.balance;
+        data.monthlyExpenses = formData.monthlyExpenses;
+        data.monthlyIncome = formData.monthlyIncome;
+        data.recentTransactions = data.recentTransactions;
+        data.AdminId = financialData.AdminId;
+        console.log(data);
+        return data;
+      });
       setIsModalOpen(false);
     } catch (error) {
       console.error("Error updating data:", error);
     }
   };
+  console.log(financialData);
 
   return (
     <div>
@@ -305,7 +414,7 @@ function TransactionItem({ description, amount, date, type }) {
         </div>
       </div>
       <span className={`font-medium ${type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-        {type === 'income' ? '+' : '-'}${Math.abs(amount).toLocaleString()}
+        {type === 'income' ? '+' : '-'}₹{Math.abs(amount).toLocaleString()}
       </span>
     </div>
   );
@@ -317,6 +426,7 @@ function Home() {
     monthlyIncome: 0,
     monthlyExpenses: 0,
     savings: 0,
+    recentTransactions: []
   });
   const [Budget, setBudget] = useState<[{
     category: string,
@@ -329,6 +439,8 @@ function Home() {
     spent: 0,
     color: ''
   }]);
+  const [isViewAllTransactionsModalOpen, setIsViewAllTransactionsModalOpen] = useState(false); 
+
   const [isAddBudgetModalOpen, setIsAddBudgetModalOpen] = useState(false);
   const [newBudget, setNewBudget] = useState({
     category: '',
@@ -359,18 +471,28 @@ function Home() {
           token: token
         }
       })
-      console.log("end")
-      console.log(res.data);
+      const resTrans = await axios.get('http://localhost:3001/transactions',{
+        headers: {
+          token: token
+        }
+      })
       setBudget(rebBudget.data);
-      setData(res.data);
+      setData((data)=>{
+        data.balance = res.data.balance;
+        data.monthlyExpenses = res.data.monthlyExpenses;
+        data.monthlyIncome = res.data.monthlyIncome;
+        data.recentTransactions = resTrans.data;
+        console.log(data.recentTransactions);
+        data.AdminId = res.data.AdminId;
+        return data;
+
+     });
+
 
     }
     fetch();
 
   }, [])
-  const handleUpdate = (updatedData) => {
-    setBudget(updatedData);
-  };
 
   const handleAddBudgetInputChange = (e) => {
     const { name, value } = e.target;
@@ -397,7 +519,6 @@ function Home() {
     }
   };
 
-  console.log(session.data?.user?.image)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -423,7 +544,7 @@ function Home() {
               }} className="px-4 py-2 text-black rounded-lg transition-colors">
                 SignOut
               </button>
-              <img className='h-12 w-12' src={session.data?.user?.image} alt="" />
+              <img className='h-12 w-12' src={session.data?.user?.image} alt={session.data?.user?.image} />
             </div>
           </div>
         </div>
@@ -438,7 +559,7 @@ function Home() {
                 <h2 className="text-xl font-bold text-gray-900">Budget Overview</h2>
                 <PieChart className="w-6 h-6 text-gray-400" />
               </div>
-              <div className="space-y-6">
+              <div className="space-y-6 max-h-96 overflow-y-auto mx-1" >
                 {Budget.map((budget, index) => (
                   <BudgetProgress key={index} budget={budget} onUpdate={setBudget} />
                 ))}
@@ -517,18 +638,30 @@ function Home() {
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Transactions</h2>
-              <div className="space-y-4">
-                {data.recentTransactions?.map((transaction) => (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {console.log(data)}
+                {
+                data.recentTransactions?.map((transaction) => (
                   <TransactionItem key={transaction.id} {...transaction} />
                 ))}
               </div>
-              <button className="w-full mt-6 px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+              <button className="w-full mt-6 px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors" onClick={()=>{
+                setIsViewAllTransactionsModalOpen(true)
+              }
+                
+              }>
                 View All Transactions
               </button>
             </div>
           </div>
         </div>
       </main>
+      {isViewAllTransactionsModalOpen && (
+        <TransactionModal
+          transactions={data.recentTransactions}
+          onClose={() => setIsViewAllTransactionsModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
