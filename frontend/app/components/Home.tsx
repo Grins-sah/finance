@@ -1,12 +1,13 @@
 "use client"
 import React, { useEffect, useState } from 'react';
-import { signIn,signOut } from 'next-auth/react';
+import { signIn, signOut } from 'next-auth/react';
 import { useSession } from 'next-auth/react';
+import { incomeAtom } from '../atoms';
 import axios from 'axios';
-import { 
-  Wallet, 
-  PieChart, 
-  TrendingUp, 
+import {
+  Wallet,
+  PieChart,
+  TrendingUp,
   DollarSign,
   CreditCard,
   ArrowUpCircle,
@@ -16,11 +17,12 @@ import {
 import { RecoilBridge, useRecoilValue } from 'recoil';
 import { userData, userDataAtom } from '../atoms/financeAtom';
 import { headers } from 'next/headers';
+import { useAtomValue, useSetAtom } from 'jotai';
 
 
 
 function StatCard({ title, amount, icon: Icon, trend }) {
-    
+
   return (
     <div className="bg-white rounded-xl p-6 shadow-lg">
       <div className="flex items-center justify-between mb-4">
@@ -31,58 +33,375 @@ function StatCard({ title, amount, icon: Icon, trend }) {
           <h3 className="ml-3 text-gray-600 font-medium">{title}</h3>
         </div>
 
-      
+
       </div>
       <p className="text-2xl font-bold text-black">₹{amount.toLocaleString()}</p>
     </div>
   );
 }
+function TransactionModal({ transactions, onClose, onAddTransaction }) {
+  const [newTransaction, setNewTransaction] = useState({
+    description: '',
+    amount: 0,
+    date: '',
+    type: 'income'
+  });
 
-function BudgetProgress({ category, amount, spent, color }) {
-  const percentage = (spent / amount) * 100;
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewTransaction({ ...newTransaction, [name]: value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.post(`http://localhost:3001/transactions`, { transactions: [newTransaction] }, {
+        headers: {
+          token: token
+        }
+      });
+    } catch (error) {
+      console.error("Error adding transaction:", error);
+    }
+    location.reload();
+  };
+
   return (
-    <div className="mb-4">
-      <div className="flex justify-between mb-1">
-        <span className="text-sm font-medium text-gray-600">{category}</span>
-        <span className="text-sm font-medium text-gray-600">
-          ${spent} / ${amount}
-        </span>
-      </div>
-      <div className="w-full h-2 bg-gray-200 rounded-full">
-        <div
-          className={`h-2 rounded-full ${color}`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
-        ></div>
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-white p-6 rounded-lg shadow-lg max-w-3xl w-full">
+        <h2 className="text-xl font-bold mb-4">All Transactions</h2>
+        <div className="space-y-4 max-h-96 overflow-y-auto">
+          {transactions.map((transaction) => (
+            <TransactionItem key={transaction.id} {...transaction} />
+          ))}
+        </div>
+        <form onSubmit={handleSubmit} className="mt-4">
+          <h3 className="text-lg font-bold mb-2">Add New Transaction</h3>
+          <div className="mb-4">
+            <label className="block text-gray-700">Description</label>
+            <input
+              type="text"
+              name="description"
+              value={newTransaction.description}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-gray-700">Amount</label>
+            <input
+              type="number"
+              name="amount"
+              value={newTransaction.amount}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-gray-700">Date</label>
+            <input
+              type="date"
+              name="date"
+              value={newTransaction.date}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-gray-700">Type</label>
+            <select
+              name="type"
+              value={newTransaction.type}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            >
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+            </select>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="px-4 py-2 bg-gray-300 rounded-lg mr-2"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+            >
+              Add
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
 
+function BudgetProgress({ budget, onUpdate }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    category: budget.category,
+    amount: budget.amount,
+    spent: budget.spent,
+    color: budget.color
+  });
 
-function MainHeader({financialData}){
-  
-  return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-  <StatCard 
-    title="Total Balance" 
-    amount={financialData.balance} 
-    icon={DollarSign}
-  />
-  <StatCard 
-    title="Monthly Income" 
-    amount={financialData.monthlyIncome} 
-    icon={TrendingUp}
-  />
-  <StatCard 
-    title="Monthly Expenses" 
-    amount={financialData.monthlyExpenses} 
-    icon={CreditCard}
-  />
-  <StatCard 
-    title="Total Savings" 
-    amount={financialData.savings} 
-    icon={Target}
-  />
-</div>
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.put(`http://localhost:3001/expenses/${budget.id}`,{
+        category: formData.category,
+        amount: parseInt(formData.amount),
+        spent: parseInt(formData.spent),
+        color: formData.color
+      }, {
+        headers: {
+          token: token
+        }
+      });
+      const data = await axios.get('http://localhost:3001/expenses', {
+        headers: {
+          token: token
+        }
+      });
+      onUpdate(data.data);
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Error updating budget:", error);
+    }
+  };
+
+  const percentage = (budget.spent / budget.amount) * 100;
+
+  return (
+    <div className="mb-4">
+      <div className="flex justify-between mb-1">
+        <span className="text-sm font-medium text-gray-600">{budget.category}</span>
+        <span className="text-sm font-medium text-gray-600">
+        ₹{budget.spent} / ₹{budget.amount}
+        </span>
+      </div>
+      <div className="w-full h-2 bg-gray-200 rounded-full">
+        <div
+          className={`h-2 rounded-full ${budget.color}`}
+          style={{ width: `${Math.min(percentage, 100)}%`,backgroundColor: budget.color }}
+        ></div>
+      </div>
+      <button
+        className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        onClick={() => setIsModalOpen(true)}
+      >
+        Update Budget
+      </button>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h2 className="text-xl font-bold mb-4">Update Budget</h2>
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label className="block text-gray-700">Category</label>
+                <input
+                  type="text"
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700">Amount</label>
+                <input
+                  type="number"
+                  name="amount"
+                  value={formData.amount}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700">Spent</label>
+                <input
+                  type="number"
+                  name="spent"
+                  value={formData.spent}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700">Color</label>
+                <input
+                  type="text"
+                  name="color"
+                  value={formData.color}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-gray-300 rounded-lg mr-2"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+                >
+                  Update
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+function MainHeader({ financialData, onUpdate }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    balance: financialData.balance,
+    monthlyIncome: financialData.monthlyIncome,
+    monthlyExpenses: financialData.monthlyExpenses
+  });
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.put(`http://localhost:3001/data/${financialData.AdminId}`, formData, {
+        headers: {
+          token: token
+        }
+      });
+      onUpdate((data)=>{
+        data.balance = formData.balance;
+        data.monthlyExpenses = formData.monthlyExpenses;
+        data.monthlyIncome = formData.monthlyIncome;
+        data.recentTransactions = data.recentTransactions;
+        data.AdminId = financialData.AdminId;
+        const setIncome = useSetAtom(incomeAtom);
+        setIncome(()=>data);
+        console.log(useAtomValue(incomeAtom));
+        console.log(data);
+        return data;
+      });
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Error updating data:", error);
+    }
+  };
+  console.log(financialData);
+
+  return (
+    <div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <StatCard
+          title="Total Balance"
+          amount={financialData.balance}
+          icon={DollarSign}
+        />
+        <StatCard
+          title="Monthly Income"
+          amount={financialData.monthlyIncome}
+          icon={TrendingUp}
+        />
+        <StatCard
+          title="Monthly Expenses"
+          amount={financialData.monthlyExpenses}
+          icon={CreditCard}
+        />
+        <StatCard
+          title="Total Savings"
+          amount={financialData.monthlyIncome - financialData.monthlyExpenses}
+          icon={Target}
+        />
+      </div>
+      <button
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        onClick={() => setIsModalOpen(true)}
+      >
+        Update Financial Data
+      </button>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h2 className="text-xl font-bold mb-4">Update Financial Data</h2>
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label className="block text-gray-700">Balance</label>
+                <input
+                  type="number"
+                  name="balance"
+                  value={formData.balance}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700">Monthly Income</label>
+                <input
+                  type="number"
+                  name="monthlyIncome"
+                  value={formData.monthlyIncome}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700">Monthly Expenses</label>
+                <input
+                  type="number"
+                  name="monthlyExpenses"
+                  value={formData.monthlyExpenses}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-gray-300 rounded-lg mr-2"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+                >
+                  Update
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TransactionItem({ description, amount, date, type }) {
@@ -100,135 +419,260 @@ function TransactionItem({ description, amount, date, type }) {
         </div>
       </div>
       <span className={`font-medium ${type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-        {type === 'income' ? '+' : '-'}${Math.abs(amount).toLocaleString()}
+        {type === 'income' ? '+' : '-'}₹{Math.abs(amount).toLocaleString()}
       </span>
     </div>
   );
 }
 function Home() {
   const session = useSession();
-  const [financialData,setData] = useState({
-    balance: 12450.75,
-    monthlyIncome: 5000,
-    monthlyExpenses: 3200,
-    savings: 1800,
-    budgets: [
-      { category: 'Housing', amount: 1500, spent: 1450, color: 'bg-blue-500' },
-      { category: 'Food', amount: 600, spent: 520, color: 'bg-green-500' },
-      { category: 'Transport', amount: 400, spent: 385, color: 'bg-yellow-500' },
-      { category: 'Entertainment', amount: 300, spent: 250, color: 'bg-purple-500' }
-    ],
-    recentTransactions: [
-      { id: 1, description: 'Grocery Store', amount: -120.50, date: '2024-03-15', type: 'expense' },
-      { id: 2, description: 'Salary Deposit', amount: 5000.00, date: '2024-03-14', type: 'income' },
-      { id: 3, description: 'Restaurant', amount: -85.20, date: '2024-03-13', type: 'expense' },
-      { id: 4, description: 'Utilities', amount: -200.00, date: '2024-03-12', type: 'expense' }
-    ]
-});
-  const token = localStorage.getItem("token");
-  useEffect(()=>{
+  const [data, setData] = useState({
+    balance: 0,
+    monthlyIncome: 0,
+    monthlyExpenses: 0,
+    savings: 0,
+    recentTransactions: []
+  });
+  const [Budget, setBudget] = useState<[{
+    category: string,
+    amount: number,
+    spent: number,
+    color: string
+  }]>([{
+    category: '',
+    amount: 0,
+    spent: 0,
+    color: ''
+  }]);
+  const [isViewAllTransactionsModalOpen, setIsViewAllTransactionsModalOpen] = useState(false); 
 
-    async function fetch(){
+  const [isAddBudgetModalOpen, setIsAddBudgetModalOpen] = useState(false);
+  const [newBudget, setNewBudget] = useState({
+    category: '',
+    amount: 0,
+    spent: 0,
+    color: ''
+  });
+  const token = localStorage.getItem("token");
+  useEffect(() => {
+
+    async function fetch() {
       console.log("start")
       console.log(token);
-      const res = await axios.post(`http://localhost:3001/data`,{},{
-        headers:{
-          token:token
+      const res: {
+        data: {
+          balance: number,
+          monthlyIncome: number,
+          monthlyExpenses: number,
+          savings: number
+        }
+      } = await axios.get(`http://localhost:3001/data`, {
+        headers: {
+          token: token
         }
       })
-    console.log("end")
-    console.log(res);
-    setData(res.data);
+      const rebBudget = await axios.get('http://localhost:3001/expenses',{
+        headers: {
+          token: token
+        }
+      })
+      const resTrans = await axios.get('http://localhost:3001/transactions',{
+        headers: {
+          token: token
+        }
+      })
+      setBudget(rebBudget.data);
+      setData((data)=>{
+        data.balance = res.data.balance;
+        data.monthlyExpenses = res.data.monthlyExpenses;
+        data.monthlyIncome = res.data.monthlyIncome;
+        data.recentTransactions = resTrans.data;
+        console.log(data.recentTransactions);
+        data.AdminId = res.data.AdminId;
+
+        return data;
+
+     });
+
 
     }
-  fetch();
-  
-  },[])
-  console.log(session.data?.user?.image)
-    
+    fetch();
+
+  }, [])
+
+  const handleAddBudgetInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewBudget({ ...newBudget, [name]: value });
+  };
+
+  const handleAddBudgetSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post(`http://localhost:3001/expenses`, { expenses: [newBudget] }, {
+        headers: {
+          token: token
+        }
+      });
+      const data = await axios.get('http://localhost:3001/expenses', {
+        headers: {
+          token: token
+        }
+      });
+      setBudget(data.data);
+      setIsAddBudgetModalOpen(false);
+    } catch (error) {
+      console.error("Error adding budget:", error);
+    }
+  };
+
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <Wallet className="w-8 h-8 text-blue-600" />
-              <h1 onClick={()=>{
-                window.open("http://localhost:3000/","_self")
+              <h1 onClick={() => {
+                window.open("http://localhost:3000/", "_self")
               }} className="ml-3 text-2xl font-bold text-gray-900 cursor-pointer">Financial Dashboard</h1>
             </div>
             <div className='flex'>
-              <button className="px-4 py-2 text-black rounded-lg  transition-colors">
+              <button className='px-4 py-2 text-black rounded-lg transition-colors' onClick={()=>{
+                window.open("http://localhost:3000/analysis","_self");
+              }}>
+                Analysis
+              </button>
+              <button className="px-4 py-2 text-black rounded-lg transition-colors">
                 details
               </button>
-              <button className="px-4 py-2 text-black rounded-lg  transition-colors">
+              <button className="px-4 py-2 text-black rounded-lg transition-colors">
                 Profile
               </button>
-              <button onClick={()=>{
-                  signOut()
-                }
-              } className="px-4 py-2 text-black rounded-lg  transition-colors">
+              <button onClick={async () => {
+                await signOut()
+                window.open("http://localhost:3000/", "_self")
+              }} className="px-4 py-2 text-black rounded-lg transition-colors">
                 SignOut
               </button>
-              
-              <img className='h-12 w-12' src={session.data?.user?.image} alt="" />
-
+              <img className='h-12 w-12' src={session.data?.user?.image} alt={session.data?.user?.image} />
             </div>
- 
           </div>
         </div>
       </header>
-
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Grid */}
         <div className='text-black text-2xl font-bold'>Welcome Back,</div>
-        <MainHeader financialData={financialData}/>
-
-        {/* Two Column Layout */}
+        <MainHeader financialData={data} onUpdate={setData} />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Budget Section */}
           <div className="lg:col-span-2">
-            <div className="bg-white  rounded-xl shadow-lg p-6">
+            <div className="bg-white rounded-xl shadow-lg p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-gray-900">Budget Overview</h2>
                 <PieChart className="w-6 h-6 text-gray-400" />
               </div>
-              <div className="space-y-6">
-                {financialData.budgets.map((budget, index) => (
-                  <BudgetProgress key={index} {...budget} />
+              <div className="space-y-6 max-h-96 overflow-y-auto mx-1" >
+                {Budget.map((budget, index) => (
+                  <BudgetProgress key={index} budget={budget} onUpdate={setBudget} />
                 ))}
               </div>
-
             </div>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mt-5 "
-                onClick={()=>{
-                    window.open("http://localhost:3000/transactions","_self")
-                }}
+            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mt-5"
+              onClick={() => setIsAddBudgetModalOpen(true)}
             >
-              + Add Transaction
+              + Add Budget
             </button>
           </div>
-
-          {/* Recent Transactions */}
+          {isAddBudgetModalOpen && (
+            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+              <div className="bg-white p-6 rounded-lg shadow-lg">
+                <h2 className="text-xl font-bold mb-4">Add Budget</h2>
+                <form onSubmit={handleAddBudgetSubmit}>
+                  <div className="mb-4">
+                    <label className="block text-gray-700">Category</label>
+                    <input
+                      type="text"
+                      name="category"
+                      value={newBudget.category}
+                      onChange={handleAddBudgetInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-gray-700">Amount</label>
+                    <input
+                      type="number"
+                      name="amount"
+                      value={newBudget.amount}
+                      onChange={handleAddBudgetInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-gray-700">Spent</label>
+                    <input
+                      type="number"
+                      name="spent"
+                      value={newBudget.spent}
+                      onChange={handleAddBudgetInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-gray-700">Color</label>
+                    <input
+                      type="text"
+                      name="color"
+                      value={newBudget.color}
+                      onChange={handleAddBudgetInputChange}
+                      className="w-full p-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-gray-300 rounded-lg mr-2"
+                      onClick={() => setIsAddBudgetModalOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Transactions</h2>
-              <div className="space-y-4">
-                {financialData.recentTransactions.map((transaction) => (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {console.log(data)}
+                {
+                data.recentTransactions?.map((transaction) => (
                   <TransactionItem key={transaction.id} {...transaction} />
                 ))}
               </div>
-              <button className="w-full mt-6 px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+              <button className="w-full mt-6 px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors" onClick={()=>{
+                setIsViewAllTransactionsModalOpen(true)
+              }
+                
+              }>
                 View All Transactions
               </button>
             </div>
           </div>
-          <div>
-
-          </div>
         </div>
       </main>
+      {isViewAllTransactionsModalOpen && (
+        <TransactionModal
+          transactions={data.recentTransactions}
+          onClose={() => setIsViewAllTransactionsModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

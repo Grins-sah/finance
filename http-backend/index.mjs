@@ -84,7 +84,6 @@ app.post("/signin",async  (req,res)=>{
                     email:resdb.email,
                     id:resdb.id
                 },JWT_SECRET)
-                console.log(token);
                 res.send({
                     msg:{
                         token:token,
@@ -93,15 +92,12 @@ app.post("/signin",async  (req,res)=>{
                         email:resdb.email
                     }
                 })
-                console.log("return") 
                 return;
             }
             if(!result.data.password){
-                console.log("return") 
                 return;
             } 
             if(!resdb.password){
-                console.log("return") 
                 return;
             }
             const passResult = await bcrypt.compare(result.data.password,resdb.password);
@@ -118,7 +114,6 @@ app.post("/signin",async  (req,res)=>{
                         email:resdb.email
                     }
                 })
-                console.log("return");
                 return
             }else{
                 res.status(205).send({
@@ -142,29 +137,217 @@ app.post("/signin",async  (req,res)=>{
         return;
     }
 })
+app.post("/data", middleware, async (req, res) => {
+    const { balance, monthlyIncome, monthlyExpenses, AdminId } = req.body;
+
+    try {
+        const dbResData = await prisma.data.create({
+            data: {
+                balance,
+                monthlyIncome,
+                monthlyExpenses,
+                AdminId
+            }
+        });
+
+        res.json({
+            msg: "Data saved successfully",
+            data: dbResData
+        });
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error saving data",
+            error: e.message
+        });
+    }
+});
+
+app.post("/expenses", middleware, async (req, res) => {
+    const expenses = req.body.expenses.map(expense => ({
+        amount: parseInt(expense.amount),
+        color: expense.color,
+        spent: parseInt(expense.spent),
+        category: expense.category,
+        adminId: req.id
+    }));
+
+    try {
+        const dbResExpenses = await prisma.expense.createMany({
+            data: expenses
+        });
+
+        res.json({
+            msg: "Expenses saved successfully",
+            expenses: dbResExpenses
+        });
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error saving expenses",
+            error: e.message
+        });
+    }
+});
+
+app.post("/transactions", middleware, async (req, res) => {
+    const transactions = req.body.transactions.map(transaction => ({
+        description: transaction.description,
+        amount: parseFloat(transaction.amount), // Change amount to float
+        date: new Date(transaction.date).toISOString(), // Ensure date is in ISO-8601 format
+        type: transaction.type,
+        adminId: req.id
+    }));
+    try {
+        const dbResTransactions = await prisma.transaction.createMany({
+            data: transactions
+        });
+
+        res.json({
+            msg: "Transactions saved successfully",
+            transactions: dbResTransactions
+        });
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error saving transactions",
+            error: e.message
+        });
+    }
+});
 
 
-app.post("/data",middleware,async (req,res)=>{
-    console.log("data");
-    res.json({
-        balance: 12450.75,
-        monthlyIncome: 5000,
-        monthlyExpenses: 3200,
-        savings: 1800,
-        budgets: [
-          { category: 'Housing', amount: 1500, spent: 1450, color: 'bg-blue-500' },
-          { category: 'Food', amount: 600, spent: 520, color: 'bg-green-500' },
-          { category: 'Transport', amount: 400, spent: 385, color: 'bg-yellow-500' },
-          { category: 'Entertainment', amount: 300, spent: 250, color: 'bg-purple-500' }
-        ],
-        recentTransactions: [
-          { id: 1, description: 'Grocery Store', amount: -120.50, date: '2024-03-15', type: 'expense' },
-          { id: 2, description: 'Salary Deposit', amount: 5000.00, date: '2024-03-14', type: 'income' },
-          { id: 3, description: 'Restaurant', amount: -85.20, date: '2024-03-13', type: 'expense' },
-          { id: 4, description: 'Utilities', amount: -200.00, date: '2024-03-12', type: 'expense' }
-        ]
-    })
-})
+app.get("/data", middleware, async (req, res) => {
+    try {
+        const data = await prisma.data.findMany({
+            where: {
+                AdminId: req.id
+            }
+        });
+        res.json(data[0]);
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error fetching data",
+            error: e.message
+        });
+    }
+});
+
+app.get("/expenses", middleware, async (req, res) => {
+    try {
+        const expenses = await prisma.expense.findMany({
+            where: {
+                adminId: req.id
+            }
+        });
+        res.json(expenses);
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error fetching expenses",
+            error: e.message
+        });
+    }
+});
+
+app.get("/transactions", middleware, async (req, res) => {
+    try {
+        const transactions = await prisma.transaction.findMany({
+            where: {
+                adminId: req.id
+            }
+        });
+        res.json(transactions);
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error fetching transactions",
+            error: e.message
+        });
+    }
+});
+app.put("/data/:id", middleware, async (req, res) => {
+    const { id } = req.params;
+    const { balance, monthlyIncome, monthlyExpenses, AdminId } = req.body;
+
+    try {
+        const dbResData = await prisma.data.update({
+            where: { AdminId: id },
+            data: {
+                balance,
+                monthlyIncome,
+                monthlyExpenses,
+                AdminId
+            }
+        });
+
+        res.json({
+            msg: "Data updated successfully",
+            data: dbResData
+        });
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error updating data",
+            error: e.message
+        });
+    }
+});
+
+app.put("/expenses/:id", middleware, async (req, res) => {
+    const { id } = req.params;
+    req.body.amount = parseInt(req.body.amount);
+    req.body.spent = parseInt(req.body.spent);
+    const { category, amount, spent, color, adminId } = req.body;
+
+
+    try {
+        const dbResExpense = await prisma.expense.update({
+            where: { id: id },
+            data: {
+                category,
+                amount,
+                spent,
+                color,
+                adminId
+            }
+        });
+
+        res.json({
+            msg: "Expense updated successfully",
+            expense: dbResExpense
+        });
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error updating expense",
+            error: e.message
+        });
+    }
+});
+
+app.put("/transactions/:id", middleware, async (req, res) => {
+    const { id } = req.params;
+    const { description, amount, date, type, adminId } = req.body;
+
+    try {
+        const dbResTransaction = await prisma.transaction.update({
+            where: { id: parseInt(id) },
+            data: {
+                description,
+                amount,
+                date,
+                type,
+                adminId
+            }
+        });
+
+        res.json({
+            msg: "Transaction updated successfully",
+            transaction: dbResTransaction
+        });
+    } catch (e) {
+        res.status(500).json({
+            msg: "Error updating transaction",
+            error: e.message
+        });
+    }
+});
+
+
 
 app.listen(3001,()=>{
     console.log("done")
