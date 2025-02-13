@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { signIn, signOut } from 'next-auth/react';
 import { useSession } from 'next-auth/react';
+import { incomeAtom } from '../atoms';
 import axios from 'axios';
 import {
   Wallet,
@@ -16,6 +17,7 @@ import {
 import { RecoilBridge, useRecoilValue } from 'recoil';
 import { userData, userDataAtom } from '../atoms/financeAtom';
 import { headers } from 'next/headers';
+import { useAtomValue, useSetAtom } from 'jotai';
 
 
 
@@ -300,6 +302,9 @@ function MainHeader({ financialData, onUpdate }) {
         data.monthlyIncome = formData.monthlyIncome;
         data.recentTransactions = data.recentTransactions;
         data.AdminId = financialData.AdminId;
+        const setIncome = useSetAtom(incomeAtom);
+        setIncome(()=>data);
+        console.log(useAtomValue(incomeAtom));
         console.log(data);
         return data;
       });
@@ -484,6 +489,7 @@ function Home() {
         data.recentTransactions = resTrans.data;
         console.log(data.recentTransactions);
         data.AdminId = res.data.AdminId;
+
         return data;
 
      });
@@ -532,6 +538,11 @@ function Home() {
               }} className="ml-3 text-2xl font-bold text-gray-900 cursor-pointer">Financial Dashboard</h1>
             </div>
             <div className='flex'>
+              <button className='px-4 py-2 text-black rounded-lg transition-colors' onClick={()=>{
+                window.open("http://localhost:3000/analysis","_self");
+              }}>
+                Analysis
+              </button>
               <button className="px-4 py-2 text-black rounded-lg transition-colors">
                 details
               </button>
