@@ -262,31 +262,35 @@ app.get("/transactions", middleware, async (req, res) => {
     }
 });
 app.put("/data/:id", middleware, async (req, res) => {
-    const { id } = req.params;
-    const { balance, monthlyIncome, monthlyExpenses, AdminId } = req.body;
-
     try {
-        const dbResData = await prisma.data.update({
-            where: { AdminId: id },
-            data: {
-                balance,
-                monthlyIncome,
-                monthlyExpenses,
-                AdminId
-            }
-        });
-
-        res.json({
-            msg: "Data updated successfully",
-            data: dbResData
-        });
+      const { balance, monthlyIncome, monthlyExpenses, savings } = req.body;
+      
+      // Validate the numbers
+      const validatedData = {
+        balance: Number(balance) || 0,
+        monthlyIncome: Number(monthlyIncome) || 0,
+        monthlyExpenses: Number(monthlyExpenses) || 0,
+        savings: Number(savings) || 0
+      };
+  
+      const updatedData = await prisma.userData.update({
+        where: {
+          id: parseInt(req.params.id)
+        },
+        data: validatedData
+      });
+  
+      res.json({
+        msg: "Data updated successfully",
+        data: updatedData
+      });
     } catch (e) {
-        res.status(500).json({
-            msg: "Error updating data",
-            error: e.message
-        });
+      res.status(500).json({
+        msg: "Error updating data",
+        error: e.message
+      });
     }
-});
+  });
 
 app.put("/expenses/:id", middleware, async (req, res) => {
     const { id } = req.params;
