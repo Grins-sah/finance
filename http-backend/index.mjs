@@ -322,6 +322,75 @@ app.put("/expenses/:id", middleware, async (req, res) => {
         });
     }
 });
+// Add this new endpoint after your existing endpoints
+app.get("/user-data", middleware, async (req, res) => {
+    try {
+        const userData = await prisma.user.findUnique({
+            where: {
+                id: req.id
+            },
+            include: {
+                data: true,
+                expenses: {
+                    orderBy: {
+                        createdAt: 'desc'
+                    }
+                },
+                trans: {
+                    orderBy: {
+                        date: 'desc'
+                    }
+                }
+            }
+        });
+
+        if (!userData) {
+            return res.status(404).json({
+                msg: "User not found"
+            });
+        }
+
+        // Convert string numbers to actual numbers for financial data
+        const financialData = userData.data ? {
+            balance: parseFloat(userData.data.balance) || 0,
+            monthlyIncome: parseFloat(userData.data.monthlyIncome) || 0,
+            monthlyExpenses: parseFloat(userData.data.monthlyExpenses) || 0,
+            AdminId: userData.data.AdminId
+        } : null;
+
+        // Format expenses to ensure consistent number types
+        const formattedExpenses = userData.expenses.map(expense => ({
+            ...expense,
+            amount: Number(expense.amount),
+            spent: Number(expense.spent)
+        }));
+
+        // Format transactions to ensure consistent number types
+        const formattedTransactions = userData.trans.map(transaction => ({
+            ...transaction,
+            amount: Number(transaction.amount)
+        }));
+
+        res.json({
+            user: {
+                id: userData.id,
+                email: userData.email,
+                name: userData.name,
+                photo: userData.photo
+            },
+            data: financialData,
+            expenses: formattedExpenses,
+            transactions: formattedTransactions
+        });
+
+    } catch (e) {
+        console.error("Error in /user-data:", e);
+        res.status(500).json({
+            msg: "Error fetching user data",
+            error: e.message
+        });
+    }
+});
 
 app.put("/transactions/:id", middleware, async (req, res) => {
     const { id } = req.params;

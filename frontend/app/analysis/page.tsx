@@ -184,7 +184,7 @@ export default function Analysis() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="bg-white p-6 rounded-xl shadow-lg">
             <h2 className='text-black text-xl font-bold mb-4'>Financial Overview</h2>
-            <div className="flex justify-center">
+            <div className="flex justify-center  ">
               <PieChart width={400} height={400}>
                 <Pie
                   data={pieData}
