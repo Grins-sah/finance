@@ -14,15 +14,18 @@ import {
   ArrowDownCircle,
   Target
 } from 'lucide-react';
-import { RecoilBridge, useRecoilValue } from 'recoil';
-import { userData, userDataAtom } from '../atoms/financeAtom';
-import { headers } from 'next/headers';
 import { useAtomValue, useSetAtom } from 'jotai';
 
-
+function Alert({ message }) {
+  return (
+    <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4" role="alert">
+      <p className="font-bold">Warning</p>
+      <p>{message}</p>
+    </div>
+  );
+}
 
 function StatCard({ title, amount, icon: Icon, trend }) {
-
   return (
     <div className="bg-white rounded-xl p-6 shadow-lg">
       <div className="flex items-center justify-between mb-4">
@@ -32,18 +35,23 @@ function StatCard({ title, amount, icon: Icon, trend }) {
           </div>
           <h3 className="ml-3 text-gray-600 font-medium">{title}</h3>
         </div>
-
-
       </div>
-      <p className="text-2xl font-bold text-black">₹{amount.toLocaleString()}</p>
+      <div>
+        <p className="text-2xl font-bold text-black">₹{amount.toLocaleString()}</p>
+        {title === "Total Balance" && amount === 0 && (
+          <p className="text-sm text-gray-500 mt-1">
+            Balance will be updated after the first month of use
+          </p>
+        )}
+      </div>
     </div>
   );
 }
-function TransactionModal({ transactions, onClose, onAddTransaction }) {
+function TransactionModal({ transactions, onClose, onUpdate, Budget, setBudget }) {
   const [newTransaction, setNewTransaction] = useState({
     description: '',
     amount: 0,
-    date: '',
+    date: new Date().toISOString().split('T')[0], // Set default date to today
     type: 'income'
   });
 
@@ -56,75 +64,143 @@ function TransactionModal({ transactions, onClose, onAddTransaction }) {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.post(`http://localhost:3001/transactions`, { transactions: [newTransaction] }, {
-        headers: {
-          token: token
+      
+      // Format the transaction data
+      const transactionToSubmit = {
+        ...newTransaction,
+        amount: parseFloat(newTransaction.amount),
+        date: new Date(newTransaction.date).toISOString()
+      };
+
+      // Add transaction
+      await axios.post(`http://localhost:3001/transactions`, 
+        { transactions: [transactionToSubmit] },
+        { headers: { token: token } }
+      );
+
+      // If it's an expense, update the corresponding budget
+      if (transactionToSubmit.type === 'expense') {
+        const budget = Budget.find(b => b.category === transactionToSubmit.category);
+        if (budget) {
+          const updatedBudget = {
+            ...budget,
+            spent: budget.spent + Math.abs(transactionToSubmit.amount)
+          };
+
+          await axios.put(`http://localhost:3001/expenses/${budget.id}`, 
+            updatedBudget,
+            { headers: { token: token } }
+          );
+
+          // Update local budget state
+          const newBudgets = Budget.map(b => 
+            b.id === budget.id ? updatedBudget : b
+          );
+          setBudget(newBudgets);
         }
+      }
+
+      // Fetch updated transactions
+      const resTrans = await axios.get('http://localhost:3001/transactions', {
+        headers: { token: token }
       });
+
+      // Update transactions in parent component
+      onUpdate(prev => ({
+        ...prev,
+        recentTransactions: resTrans.data
+      }));
+
+      onClose();
     } catch (error) {
       console.error("Error adding transaction:", error);
+      alert("Error adding transaction. Please try again.");
     }
-    location.reload();
   };
+
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
       <div className="bg-white p-6 rounded-lg shadow-lg max-w-3xl w-full">
         <h2 className="text-xl font-bold mb-4">All Transactions</h2>
-        <div className="space-y-4 max-h-96 overflow-y-auto">
-          {transactions.map((transaction) => (
+        <div className="space-y-4 max-h-96 overflow-y-auto mb-6 border-b">
+          {transactions?.map((transaction) => (
             <TransactionItem key={transaction.id} {...transaction} />
           ))}
         </div>
         <form onSubmit={handleSubmit} className="mt-4">
-          <h3 className="text-lg font-bold mb-2">Add New Transaction</h3>
-          <div className="mb-4">
-            <label className="block text-gray-700">Description</label>
-            <input
-              type="text"
-              name="description"
-              value={newTransaction.description}
-              onChange={handleInputChange}
-              className="w-full p-2 border border-gray-300 rounded-lg"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="mb-4">
+              <label className="block text-gray-700">Description</label>
+              <input
+                type="text"
+                name="description"
+                value={newTransaction.description}
+                onChange={handleInputChange}
+                className="w-full p-2 border border-gray-300 rounded-lg"
+                required
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block text-gray-700">Amount</label>
+              <input
+                type="number"
+                name="amount"
+                value={newTransaction.amount}
+                onChange={handleInputChange}
+                className="w-full p-2 border border-gray-300 rounded-lg"
+                required
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block text-gray-700">Date</label>
+              <input
+                type="date"
+                name="date"
+                value={newTransaction.date}
+                onChange={handleInputChange}
+                className="w-full p-2 border border-gray-300 rounded-lg"
+                required
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block text-gray-700">Type</label>
+              <select
+                name="type"
+                value={newTransaction.type}
+                onChange={handleInputChange}
+                className="w-full p-2 border border-gray-300 rounded-lg"
+                required
+              >
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+              </select>
+            </div>
+            {newTransaction.type === 'expense' && (
+              <div className="mb-4">
+                <label className="block text-gray-700">Category</label>
+                <select
+                  name="category"
+                  value={newTransaction.category}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                  required
+                >
+                  <option value="">Select a category</option>
+                  {Budget.map((budget) => (
+                    <option key={budget.id} value={budget.category}>
+                      {budget.category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-          <div className="mb-4">
-            <label className="block text-gray-700">Amount</label>
-            <input
-              type="number"
-              name="amount"
-              value={newTransaction.amount}
-              onChange={handleInputChange}
-              className="w-full p-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-gray-700">Date</label>
-            <input
-              type="date"
-              name="date"
-              value={newTransaction.date}
-              onChange={handleInputChange}
-              className="w-full p-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-gray-700">Type</label>
-            <select
-              name="type"
-              value={newTransaction.type}
-              onChange={handleInputChange}
-              className="w-full p-2 border border-gray-300 rounded-lg"
-            >
-              <option value="income">Income</option>
-              <option value="expense">Expense</option>
-            </select>
-          </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end mt-4">
             <button
               type="button"
-              className="px-4 py-2 bg-gray-300 rounded-lg mr-2"
               onClick={onClose}
+              className="px-4 py-2 bg-gray-300 rounded-lg mr-2"
             >
               Cancel
             </button>
@@ -132,7 +208,7 @@ function TransactionModal({ transactions, onClose, onAddTransaction }) {
               type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded-lg"
             >
-              Add
+              Add Transaction
             </button>
           </div>
         </form>
@@ -159,7 +235,7 @@ function BudgetProgress({ budget, onUpdate }) {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.put(`http://localhost:3001/expenses/${budget.id}`,{
+      const res = await axios.put(`http://localhost:3001/expenses/${budget.id}`, {
         category: formData.category,
         amount: parseInt(formData.amount),
         spent: parseInt(formData.spent),
@@ -182,19 +258,22 @@ function BudgetProgress({ budget, onUpdate }) {
   };
 
   const percentage = (budget.spent / budget.amount) * 100;
+  const remainingAmount = budget.amount - budget.spent;
+  const isWarning = remainingAmount <= (budget.amount * 0.25); // Show warning if only 25% budget is remaining
 
   return (
     <div className="mb-4">
+      {isWarning && <Alert message={`You have only ₹${remainingAmount} left in your ${budget.category} budget.`} />}
       <div className="flex justify-between mb-1">
         <span className="text-sm font-medium text-gray-600">{budget.category}</span>
         <span className="text-sm font-medium text-gray-600">
-        ₹{budget.spent} / ₹{budget.amount}
+          ₹{budget.spent} / ₹{budget.amount}
         </span>
       </div>
       <div className="w-full h-2 bg-gray-200 rounded-full">
         <div
           className={`h-2 rounded-full ${budget.color}`}
-          style={{ width: `${Math.min(percentage, 100)}%`,backgroundColor: budget.color }}
+          style={{ width: `${Math.min(percentage, 100)}%`, backgroundColor: budget.color }}
         ></div>
       </div>
       <button
@@ -273,8 +352,7 @@ function BudgetProgress({ budget, onUpdate }) {
 }
 
 
-
-function MainHeader({ financialData, onUpdate }) {
+function MainHeader({ financialData, onUpdate ,Budget}) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     balance: financialData.balance,
@@ -282,38 +360,44 @@ function MainHeader({ financialData, onUpdate }) {
     monthlyExpenses: financialData.monthlyExpenses
   });
 
+  useEffect(() => {
+    const currentDate = new Date();
+    const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    
+    const monthlyTransactions = financialData.recentTransactions.filter(transaction => 
+      new Date(transaction.date) >= firstDayOfMonth
+    );
+
+    // Calculate income (positive transactions)
+    const calculatedIncome = monthlyTransactions
+      .filter(transaction => transaction.type === 'income')
+      .reduce((sum, transaction) => sum + Math.abs(parseFloat(transaction.amount)), 0);
+
+    // Calculate expenses (negative transactions + budget spent)
+    const transactionExpenses = monthlyTransactions
+      .filter(transaction => transaction.type === 'expense')
+      .reduce((sum, transaction) => sum + Math.abs(parseFloat(transaction.amount)), 0);
+
+    // Calculate total budget spent this month
+    const budgetExpenses = Budget.reduce((sum, budget) => sum + budget.spent, 0);
+
+    const totalExpenses = transactionExpenses + budgetExpenses;
+
+    console.log('Monthly Income:', calculatedIncome);
+    console.log('Monthly Expenses:', totalExpenses);
+
+    setFormData(prev => ({
+      ...prev,
+      monthlyIncome: calculatedIncome,
+      monthlyExpenses: totalExpenses
+    }));
+  }, [financialData.recentTransactions, Budget]);
+
+  
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.put(`http://localhost:3001/data/${financialData.AdminId}`, formData, {
-        headers: {
-          token: token
-        }
-      });
-      onUpdate((data)=>{
-        data.balance = formData.balance;
-        data.monthlyExpenses = formData.monthlyExpenses;
-        data.monthlyIncome = formData.monthlyIncome;
-        data.recentTransactions = data.recentTransactions;
-        data.AdminId = financialData.AdminId;
-        const setIncome = useSetAtom(incomeAtom);
-        setIncome(()=>data);
-        console.log(useAtomValue(incomeAtom));
-        console.log(data);
-        return data;
-      });
-      setIsModalOpen(false);
-    } catch (error) {
-      console.error("Error updating data:", error);
-    }
-  };
-  console.log(financialData);
 
   return (
     <div>
@@ -325,17 +409,17 @@ function MainHeader({ financialData, onUpdate }) {
         />
         <StatCard
           title="Monthly Income"
-          amount={financialData.monthlyIncome}
+          amount={formData.monthlyIncome}
           icon={TrendingUp}
         />
         <StatCard
           title="Monthly Expenses"
-          amount={financialData.monthlyExpenses}
+          amount={formData.monthlyExpenses}
           icon={CreditCard}
         />
         <StatCard
           title="Total Savings"
-          amount={financialData.monthlyIncome - financialData.monthlyExpenses}
+          amount={formData.monthlyIncome - formData.monthlyExpenses}
           icon={Target}
         />
       </div>
@@ -445,6 +529,9 @@ function Home() {
     color: ''
   }]);
   const [isViewAllTransactionsModalOpen, setIsViewAllTransactionsModalOpen] = useState(false); 
+  const handleCloseTransactionModal = () => {
+    setIsViewAllTransactionsModalOpen(false);
+  };
 
   const [isAddBudgetModalOpen, setIsAddBudgetModalOpen] = useState(false);
   const [newBudget, setNewBudget] = useState({
@@ -455,50 +542,134 @@ function Home() {
   });
   const token = localStorage.getItem("token");
   useEffect(() => {
+    async function handleMonthEnd() {
+      const currentDate = new Date();
+      const storedMonth = localStorage.getItem('lastSavingsUpdateMonth');
+      const currentMonth = currentDate.getMonth();
+  
+      if (storedMonth !== currentMonth.toString()) {
+        try {
+          // Calculate savings (only if both values are numbers)
+          const monthlySavings = Number(data.monthlyIncome) - Number(data.monthlyExpenses);
+          const newBalance = Number(data.balance) + monthlySavings;
+  
+          // Ensure the balance is valid before updating
+          if (!isNaN(newBalance) && isFinite(newBalance)) {
+            // Update balance in database
+            const res = await axios.put(`http://localhost:3001/data/${data.AdminId}`, {
+              balance: newBalance,
+              monthlyIncome: data.monthlyIncome,
+              monthlyExpenses: data.monthlyExpenses,
+              savings: monthlySavings
+            }, {
+              headers: { token: token }
+            });
+  
+            // Update local state
+            setData(prev => ({
+              ...prev,
+              balance: newBalance
+            }));
+  
+            // Store current month
+            localStorage.setItem('lastSavingsUpdateMonth', currentMonth.toString());
+  
+            // Show success message
+            alert(`Monthly savings of ₹${monthlySavings} added to balance!`);
+          } else {
+            console.error("Invalid balance calculation:", {
+              currentBalance: data.balance,
+              monthlySavings,
+              newBalance
+            });
+          }
+        } catch (error) {
+          console.error("Error updating balance with savings:", error);
+        }
+      }
+    }
+  
+    handleMonthEnd();
+  }, [data.monthlyIncome, data.monthlyExpenses, data.balance, data.AdminId, token]);
+  useEffect(() => {
+    async function resetBudgets() {
+      const currentDate = new Date();
+      const storedMonth = localStorage.getItem('lastBudgetResetMonth');
+      const currentMonth = currentDate.getMonth();
 
+      // Check if we need to reset budgets
+      if (storedMonth !== currentMonth.toString()) {
+        try {
+          // Reset spent amount for all budgets
+          const updatedBudgets = Budget.map(budget => ({
+            ...budget,
+            spent: 0
+          }));
+
+          // Update each budget in the database
+          for (const budget of updatedBudgets) {
+            await axios.put(`http://localhost:3001/expenses/${budget.id}`, 
+              {
+                ...budget,
+                spent: 0
+              },
+              {
+                headers: { token: token }
+              }
+            );
+          }
+
+          // Update local state
+          setBudget(updatedBudgets);
+          
+          // Store current month
+          localStorage.setItem('lastBudgetResetMonth', currentMonth.toString());
+        } catch (error) {
+          console.error("Error resetting budgets:", error);
+        }
+      }
+    }
+
+    resetBudgets();
+  }, [Budget, token]);
+  useEffect(() => {
     async function fetch() {
-      console.log("start")
-      console.log(token);
-      const res: {
-        data: {
-          balance: number,
-          monthlyIncome: number,
-          monthlyExpenses: number,
-          savings: number
-        }
-      } = await axios.get(`http://localhost:3001/data`, {
-        headers: {
-          token: token
-        }
-      })
-      const rebBudget = await axios.get('http://localhost:3001/expenses',{
-        headers: {
-          token: token
-        }
-      })
-      const resTrans = await axios.get('http://localhost:3001/transactions',{
-        headers: {
-          token: token
-        }
-      })
-      setBudget(rebBudget.data);
-      setData((data)=>{
-        data.balance = res.data.balance;
-        data.monthlyExpenses = res.data.monthlyExpenses;
-        data.monthlyIncome = res.data.monthlyIncome;
-        data.recentTransactions = resTrans.data;
-        console.log(data.recentTransactions);
-        data.AdminId = res.data.AdminId;
-
-        return data;
-
-     });
-
-
+      try {
+        console.log("start")
+        console.log(token);
+        const res = await axios.get(`http://localhost:3001/data`, {
+          headers: {
+            token: token
+          }
+        });
+        
+        const rebBudget = await axios.get('http://localhost:3001/expenses', {
+          headers: {
+            token: token
+          }
+        });
+        
+        const resTrans = await axios.get('http://localhost:3001/transactions', {
+          headers: {
+            token: token
+          }
+        });
+  
+        setBudget(rebBudget.data);
+        setData(prev => ({
+          ...prev,
+          balance: Number(res.data.balance) || 0,
+          monthlyExpenses: Number(res.data.monthlyExpenses) || 0,
+          monthlyIncome: Number(res.data.monthlyIncome) || 0,
+          recentTransactions: resTrans.data,
+          AdminId: res.data.AdminId
+        }));
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
     }
     fetch();
-
-  }, [])
+  }, [token]);
 
   const handleAddBudgetInputChange = (e) => {
     const { name, value } = e.target;
@@ -562,7 +733,7 @@ function Home() {
       </header>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className='text-black text-2xl font-bold'>Welcome Back,</div>
-        <MainHeader financialData={data} onUpdate={setData} />
+        <MainHeader financialData={data} onUpdate={setData} Budget = {Budget} />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-lg p-6">
@@ -668,11 +839,14 @@ function Home() {
         </div>
       </main>
       {isViewAllTransactionsModalOpen && (
-        <TransactionModal
-          transactions={data.recentTransactions}
-          onClose={() => setIsViewAllTransactionsModalOpen(false)}
-        />
-      )}
+  <TransactionModal
+    transactions={data.recentTransactions || []}
+    onClose={handleCloseTransactionModal}
+    onUpdate={setData}
+    Budget={Budget}
+    setBudget={setBudget}
+  />
+)}
     </div>
   );
 }
